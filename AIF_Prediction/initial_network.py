@@ -1,12 +1,19 @@
 import generate_data
+import numpy as np
+
+Generated_AIF_Intensities = np.load('Generated_AIF_Intensities.npy')
+Groundtruth_AIF_Intensities = np.load('Groundtruth_AIF_Intensities.npy')
+
+Generated_AIF_Intensities = np.reshape(Generated_AIF_Intensities, (Generated_AIF_Intensities[0]* Generated_AIF_Intensities[1], Generated_AIF_Intensities[2]))
+Groundtruth_AIF_Intensities = np.reshape(Groundtruth_AIF_Intensities, (Groundtruth_AIF_Intensities[0]* Groundtruth_AIF_Intensities[1], Groundtruth_AIF_Intensities[2]))
 
 # ====================
-#  TOY DATA GENERATOR
+#  TOFTS DATA GENERATOR
 # ====================
-class ToySequenceData(object):
+class ToftsSequenceData(object):
     """ Generate sequence of data with dynamic length.
     This class generate samples for training:
-    - Class 0: linear sequences (i.e. [0, 1, 2, 3,...])
+    - Class 0: Tofts sequences
     - Class 1: random sequences (i.e. [1, 3, 10, 7,...])
     NOTICE:
     We have to pad each sequence to reach 'max_seq_len' for TensorFlow
@@ -14,8 +21,7 @@ class ToySequenceData(object):
     dimensions). The dynamic calculation will then be perform thanks to
     'seqlen' attribute that records every actual sequence length.
     """
-    def __init__(self, n_samples=1000, max_seq_len=1000, min_seq_len=3,
-                 max_value=1000):
+    def __init__(self, n_samples=1000, max_seq_len=1000, min_seq_len=3, max_value=1000, gaussian_noise=0):
         self.data = []
         self.labels = []
         self.seqlen = []
@@ -27,11 +33,10 @@ class ToySequenceData(object):
             # Add a random or linear int sequence (50% prob)
             if random.random() < .5:
                 # Generate a linear sequence
-                rand_start = random.randint(0, max_value - len)
                 s = [[float(i)/max_value] for i in
                      range(rand_start, rand_start + len)]
                 # Pad sequence for dimension consistency
-                s += [[0.] for i in range(max_seq_len - len)]
+                s += [[0.] for i in range(max_seq_len - len(s))]
                 self.data.append(s)
                 self.labels.append([1., 0.])
             else:
@@ -49,11 +54,12 @@ class ToySequenceData(object):
         """
         if self.batch_id == len(self.data):
             self.batch_id = 0
-        batch_data = (self.data[self.batch_id:min(self.batch_id +
-                                                  batch_size, len(self.data))])
+        batch_data = (self.data[self.batch_id:min(self.batch_id + batch_size, len(self.data))])
         batch_labels = (self.labels[self.batch_id:min(self.batch_id +
                                                   batch_size, len(self.data))])
         batch_seqlen = (self.seqlen[self.batch_id:min(self.batch_id +
                                                   batch_size, len(self.data))])
         self.batch_id = min(self.batch_id + batch_size, len(self.data))
+
+
 return batch_data, batch_labels, batch_seqlen
