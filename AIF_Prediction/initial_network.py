@@ -21,7 +21,7 @@ class ToftsSequenceData(object):
     dimensions). The dynamic calculation will then be perform thanks to
     'seqlen' attribute that records every actual sequence length.
     """
-    def __init__(self, n_samples=1000, max_seq_len=1000, min_seq_len=3, max_value=1000, gaussian_noise=0):
+    def __init__(self, n_samples=1000, max_seq_len=1000, min_seq_len=3, max_value=1000, gaussian_noise=[0,0], ):
         self.data = []
         self.labels = []
         self.seqlen = []
@@ -32,11 +32,7 @@ class ToftsSequenceData(object):
             self.seqlen.append(len)
             # Add a random or linear int sequence (50% prob)
             if random.random() < .5:
-                # Generate a linear sequence
-                s = [[float(i)/max_value] for i in
-                     range(rand_start, rand_start + len)]
-                # Pad sequence for dimension consistency
-                s += [[0.] for i in range(max_seq_len - len(s))]
+                
                 self.data.append(s)
                 self.labels.append([1., 0.])
             else:
