@@ -6,11 +6,6 @@ import matplotlib.pyplot as plt
 
 from qtim_tools.qtim_dce.dce_util import generate_AIF, parker_model_AIF, convert_intensity_to_concentration, revert_concentration_to_intensity, estimate_concentration
 
-import matplotlib.rcsetup as rcsetup
-import matplotlib
-print(rcsetup.all_backends)
-print matplotlib.matplotlib_fname()
-
 # Generated_AIF_Intensities = np.load('Generated_AIF_Intensities.npy')
 # Groundtruth_AIF_Intensities = np.load('Groundtruth_AIF_Intensities.npy')
 
@@ -33,8 +28,10 @@ class ToftsSequenceData(object):
     dimensions). The dynamic calculation will then be perform thanks to
     'seqlen' attribute that records every actual sequence length.
     """
-    def __init__(self, n_samples=1000, max_seq_len=SEQ_MAX_LEN, min_seq_len=3, max_value=1000, ktrans_range=[0,2], ve_range=[0,.95], gaussian_noise=[0,0], T1_range=[1000,1000], TR_range=[5, 5], flip_angle_degrees_range=[30,30], relaxivity_range=[.0045, .0045], hematocrit_range=[.45,.45], sequence_length_range=[90,110], time_interval_seconds_range=[2,2], injection_start_time_seconds_range=[10,10], T1_blood_range=[1440,1440], baseline_intensity=[100,100]):
+    def __init__(self, n_samples=1000, max_seq_len=SEQ_MAX_LEN, min_seq_len=3, max_value=1000, ktrans_range=[.3,2], ve_range=[0.001,.95], gaussian_noise=[0,0], T1_range=[1000,1000], TR_range=[5, 5], flip_angle_degrees_range=[30,30], relaxivity_range=[.0045, .0045], hematocrit_range=[.45,.45], sequence_length_range=[70,140], time_interval_seconds_range=[2,2], injection_start_time_seconds_range=[10,10], T1_blood_range=[1440,1440], baseline_intensity=[100,100]):
         
+        ktrans_low_range = [.001, .3]
+
         self.data = []
         self.labels = []
         self.seqlen = []
@@ -64,33 +61,52 @@ class ToftsSequenceData(object):
 
                 Intensity = revert_concentration_to_intensity(data_numpy=Concentration, reference_data_numpy=[], T1_tissue=np.random.uniform(*T1_range), TR=np.random.uniform(*TR_range), flip_angle_degrees=np.random.uniform(*flip_angle_degrees_range), injection_start_time_seconds=injection_start_time_seconds, relaxivity=np.random.uniform(*relaxivity_range), time_interval_seconds=time_interval_seconds, hematocrit=np.random.uniform(*hematocrit_range), T1_blood=0, T1_map = [], static_baseline=np.random.uniform(*baseline_intensity)).tolist()
 
+                Intensity = Intensity - np.mean(Intensity) / np.std(Intensity)
+
                 s = []
                 s += [[value] for value in Intensity]
                 s += [[0.] for i in range(max_seq_len - seq_len)]
 
-                # print max_seq_len, seq_len
-                # print [[0.] for i in range(max_seq_len - seq_len)]
-                # print s
-
-                # print len(Intensity)
-
-                # s = Intensity
-
                 self.data.append(s)
                 self.labels.append([1., 0.])        
 
+            # else:
+            #     # Generate a random sequence
+            #     s = [[np.random.uniform(baseline_intensity[0]*2, baseline_intensity[0]*3)]
+            #          for i in range(seq_len)]
+            #     # Pad sequence for dimension consistency
+            #     s += [[0.] for i in range(max_seq_len - seq_len)]
+
+            #     self.data.append(s)
+            #     self.labels.append([0., 1.])
+
             else:
-                # Generate a random sequence
-                s = [[np.random.uniform(baseline_intensity[0]*2, baseline_intensity[0]*3)]
-                     for i in range(seq_len)]
-                # Pad sequence for dimension consistency
+                
+                injection_start_time_seconds = np.random.uniform(*injection_start_time_seconds_range)
+                time_interval_seconds = np.random.uniform(*time_interval_seconds_range)
+                time_interval_minutes = time_interval_seconds/60
+                scan_time_seconds = seq_len * time_interval_seconds
+
+                while injection_start_time_seconds > .8*scan_time_seconds:
+                    injection_start_time_seconds = np.random.uniform(*injection_start_time_seconds_range)
+
+                AIF = parker_model_AIF(scan_time_seconds, injection_start_time_seconds, time_interval_seconds, timepoints=seq_len)
+
+                Concentration = np.array(estimate_concentration([np.random.uniform(*ktrans_low_range),np.random.uniform(*ve_range)], AIF, time_interval_minutes))
+
+                Intensity = revert_concentration_to_intensity(data_numpy=Concentration, reference_data_numpy=[], T1_tissue=np.random.uniform(*T1_range), TR=np.random.uniform(*TR_range), flip_angle_degrees=np.random.uniform(*flip_angle_degrees_range), injection_start_time_seconds=injection_start_time_seconds, relaxivity=np.random.uniform(*relaxivity_range), time_interval_seconds=time_interval_seconds, hematocrit=np.random.uniform(*hematocrit_range), T1_blood=0, T1_map = [], static_baseline=np.random.uniform(*baseline_intensity)).tolist()
+
+                s = []
+
+                Intensity = Intensity - np.mean(Intensity) / np.std(Intensity)
+
+                s += [[value] for value in Intensity]
                 s += [[0.] for i in range(max_seq_len - seq_len)]
 
-                # print s
-
                 self.data.append(s)
-                self.labels.append([0., 1.])
-            # print s
+                self.labels.append([0., 1.])        
+
+
         self.batch_id = 0
 
     def next(self, batch_size):
@@ -116,16 +132,16 @@ class ToftsSequenceData(object):
 # Parameters
 learning_rate = 0.01
 training_iters = 1000000
-batch_size = 128
+batch_size = 300
 display_step = 10
 
 # Network Parameters
 seq_max_len = SEQ_MAX_LEN # Sequence max length
-n_hidden = 64 # hidden layer num of features
+n_hidden = 600 # hidden layer num of features
 n_classes = 2 # linear sequence or not
 
-trainset = ToftsSequenceData(n_samples=1000, max_seq_len=seq_max_len)
-testset = ToftsSequenceData(n_samples=500, max_seq_len=seq_max_len)
+trainset = ToftsSequenceData(n_samples=3000, max_seq_len=seq_max_len)
+testset = ToftsSequenceData(n_samples=1500, max_seq_len=seq_max_len)
 
 # for curve in testset.data:
 #     # print curve
@@ -133,6 +149,7 @@ testset = ToftsSequenceData(n_samples=500, max_seq_len=seq_max_len)
 #     plt.show()
     # fd=gd
 # print testset.data
+
 
 # tf Graph input
 x = tf.placeholder("float", [None, seq_max_len, 1])
@@ -211,11 +228,9 @@ with tf.Session() as sess:
         sess.run(optimizer, feed_dict={x: batch_x, y: batch_y, seqlen:batch_seqlen})
         if step % display_step == 0:
             # Calculate batch accuracy
-            acc = sess.run(accuracy, feed_dict={x: batch_x, y: batch_y,
-                                                seqlen: batch_seqlen})
+            acc = sess.run(accuracy, feed_dict={x: batch_x, y: batch_y, seqlen: batch_seqlen})
             # Calculate batch loss
-            loss = sess.run(cost, feed_dict={x: batch_x, y: batch_y,
-                                             seqlen: batch_seqlen})
+            loss = sess.run(cost, feed_dict={x: batch_x, y: batch_y, seqlen: batch_seqlen})
             print("Iter " + str(step*batch_size) + ", Minibatch Loss= " + \
                   "{:.6f}".format(loss) + ", Training Accuracy= " + \
                   "{:.5f}".format(acc))
@@ -227,5 +242,4 @@ with tf.Session() as sess:
     test_label = testset.labels
     test_seqlen = testset.seqlen
     print("Testing Accuracy:", \
-        sess.run(accuracy, feed_dict={x: test_data, y: test_label,
-seqlen: test_seqlen}))
+        sess.run(accuracy, feed_dict={x: test_data, y: test_label, seqlen: test_seqlen}))
