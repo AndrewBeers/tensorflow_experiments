@@ -172,7 +172,9 @@ def dynamicRNN(x, seqlen, weights, biases, RNN_NAME):
     # with tf.name_scope(RNN_NAME):
 
         # with tf.name_scope('Unstack'):
+            print(x.get_shape())
             x = tf.unstack(x, seq_max_len, 1)
+            print(x.get_shape())
 
         # Define a lstm cell # with tensorflow
         # with tf.name_scope('LSTM Cell'):
@@ -193,8 +195,11 @@ def dynamicRNN(x, seqlen, weights, biases, RNN_NAME):
         # 'outputs' is a list of output at every timestep, we pack them in a Tensor
         # and change back dimension to [batch_size, n_step, n_input]
         # with tf.name_scope('Stack and Transpose'):
+            print(outputs.get_shape())
             outputs = tf.stack(outputs)
+            print(outputs.get_shape())
             outputs = tf.transpose(outputs, [1, 0, 2])
+            print(outputs.get_shape())
 
         # with tf.name_scope('Indexing'):
             # Hack to build the indexing and retrieve the right output.
