@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 from qtim_tools.qtim_dce.dce_util import generate_AIF, parker_model_AIF, convert_intensity_to_concentration, revert_concentration_to_intensity, estimate_concentration
 
-SEQ_MAX_LEN = 200
+SEQ_MAX_LEN = 50
 
 # ====================
 #  TOFTS DATA GENERATOR
@@ -22,7 +22,7 @@ class ToftsSequenceData(object):
     dimensions). The dynamic calculation will then be perform thanks to
     'seqlen' attribute that records every actual sequence length.
     """
-    def __init__(self, n_samples=1000, max_seq_len=SEQ_MAX_LEN, min_seq_len=3, max_value=1000, ktrans_range=[.001,2], ve_range=[0.001,.95], gaussian_noise=[0,0], T1_range=[1000,1000], TR_range=[5, 5], flip_angle_degrees_range=[30,30], relaxivity_range=[.0045, .0045], hematocrit_range=[.45,.45], sequence_length_range=[70,140], time_interval_seconds_range=[2,2], injection_start_time_seconds_range=[10,10], T1_blood_range=[1440,1440], baseline_intensity=[100,100]):
+    def __init__(self, n_samples=1000, max_seq_len=SEQ_MAX_LEN, min_seq_len=3, max_value=1000, ktrans_range=[.001,2], ve_range=[0.001,.95], gaussian_noise=[0,0], T1_range=[1000,1000], TR_range=[5, 5], flip_angle_degrees_range=[30,30], relaxivity_range=[.0045, .0045], hematocrit_range=[.45,.45], sequence_length_range=[20,40], time_interval_seconds_range=[2,2], injection_start_time_seconds_range=[10,10], T1_blood_range=[1440,1440], baseline_intensity=[100,100]):
         
         ktrans_low_range = [.001, .3]
 
@@ -133,8 +133,6 @@ num_layers = 3
 
 # Network Parameters
 seq_max_len = SEQ_MAX_LEN # Sequence max length
-n_hidden = 100 # hidden layer num of features
-n_classes = 2 # linear sequence or not
 
 trainset = ToftsSequenceData(n_samples=3000, max_seq_len=seq_max_len)
 testset = ToftsSequenceData(n_samples=3000, max_seq_len=seq_max_len)
@@ -146,23 +144,24 @@ testset = ToftsSequenceData(n_samples=3000, max_seq_len=seq_max_len)
     # fd=gd
 # print testset.data
 
-
-# tf Graph input
 x = tf.placeholder("float", [None, seq_max_len, 1])
-y = tf.placeholder("float", [None, n_classes])
-# A placeholder for indicating each sequence length
 seqlen = tf.placeholder(tf.int32, [None])
 
-# Define weights
-weights = {
-    'out': tf.Variable(tf.random_normal([n_hidden, n_classes]))
-}
-biases = {
-    'out': tf.Variable(tf.random_normal([n_classes]))
-}
+layers = 2
+features_schedule = [seq_max_len, 100, 25, 2]
+layer_preds = [0]*(layers+1)
+layer_preds[0] = x
 
+weights, biases = ({}, {})
 
-def dynamicRNN(x, seqlen, weights, biases, RNN_NAME):
+for layer_idx in xrange(layers):
+    weights['out' + str(layer_idx)] = tf.Variable(tf.random_normal([features_schedule[layer_idx+1], features_schedule[layer_idx+2]]))
+    biases['out' + str(layer_idx)] = tf.Variable(tf.random_normal([features_schedule[layer_idx+2]]))
+
+# tf Graph input
+y = tf.placeholder("float", [None, features_schedule[-1]])
+
+def dynamicRNN(x, input_seqlen, input_feature_num, input_weights, input_biases, output_feature_num, layer_idx=0):
 
     # Prepare data shape to match `rnn` function requirements
     # Current data input shape: (batch_size, n_steps, n_input)
@@ -172,54 +171,98 @@ def dynamicRNN(x, seqlen, weights, biases, RNN_NAME):
     # with tf.name_scope(RNN_NAME):
 
         # with tf.name_scope('Unstack'):
+            print('LAYER: ', str(layer_idx))
+            print('INPUT_PARAMS: ',x,input_seqlen, input_feature_num, input_weights, input_biases, output_feature_num, layer_idx)
             print(x.get_shape())
-            x = tf.unstack(x, seq_max_len, 1)
-            print(x.get_shape())
+            x = tf.unstack(x, input_feature_num, 1)
+            # print(x)
 
         # Define a lstm cell # with tensorflow
         # with tf.name_scope('LSTM Cell'):
-            lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden)
+            lstm_cell = tf.contrib.rnn.BasicLSTMCell(output_feature_num)
 
         # Get lstm cell output, providing 'sequence_length' will perform dynamic
         # calculation.
         # with tf.name_scope('Static RNN'):
-            outputs, states = tf.contrib.rnn.static_rnn(lstm_cell, x, dtype=tf.float32, sequence_length=seqlen)
+            if layer_idx == 0:
+                outputs, states = tf.contrib.rnn.static_rnn(lstm_cell, x, dtype=tf.float32, sequence_length=seqlen)
+            if layer_idx == 1:
+                outputs, states = tf.contrib.rnn.static_rnn(lstm_cell, x, dtype=tf.float32)                
 
         # When performing dynamic calculation, we must retrieve the last
         # dynamically computed output, i.e., if a sequence length is 10, we need
         # to retrieve the 10th output.
-        # However TensorFlow doesn't support advanced indexing yet, so we build
+        # However TensorFlow d oesn't support advanced indexing yet, so we build
         # a custom op that for each sample in batch size, get its length and
         # get the corresponding relevant output.
 
         # 'outputs' is a list of output at every timestep, we pack them in a Tensor
         # and change back dimension to [batch_size, n_step, n_input]
         # with tf.name_scope('Stack and Transpose'):
-            print(outputs.get_shape())
+            # print(outputs)
             outputs = tf.stack(outputs)
             print(outputs.get_shape())
             outputs = tf.transpose(outputs, [1, 0, 2])
             print(outputs.get_shape())
 
         # with tf.name_scope('Indexing'):
-            # Hack to build the indexing and retrieve the right output.
-            batch_size = tf.shape(outputs)[0]
-            # Start indices for each sample
-            index = tf.range(0, batch_size) * seq_max_len + (seqlen - 1)
-            # Indexing
-            outputs = tf.gather(tf.reshape(outputs, [-1, n_hidden]), index)
+            if layer_idx == 0:
+                # Hack to build the indexing and retrieve the right output.
+                batch_size = tf.shape(outputs)[0]
+                # Start indices for each sample
+                index = tf.range(0, batch_size) * seq_max_len + (seqlen - 1)
+                # Indexing
+                outputs = tf.gather(tf.reshape(outputs, [-1, output_feature_num]), index)
+                print(outputs.get_shape())
 
         # with tf.name_scope('Return Function'):
-            return_function = tf.matmul(outputs, weights['out']) + biases['out']
 
         # Linear activation, using outputs computed above
-            return return_function
 
-pred = dynamicRNN(x, seqlen, weights, biases, 'Predictor')
+            if layer_idx == layers - 1:
+                return_function = tf.matmul(outputs, input_weights) + input_biases
+
+                print(input_weights.get_shape())
+                print(input_biases.get_shape())
+
+                print(return_function.get_shape())                
+                return return_function
+            else:
+                return_function = tf.stack(tf.split(outputs, output_feature_num, axis=1))
+                return_function = tf.transpose(return_function, [1,0,2])
+
+                print(return_function.get_shape())                
+                return tf.tanh(return_function)
+
+# def dynamicRNN(x, input_seqlen, input_feature_num, weights, biases, output_feature_num, layer_idx=0):
+
+for layer_idx in xrange(layers):
+
+    # if layer_idx == 0:
+        print layer_preds
+        layer_preds[layer_idx+1] = dynamicRNN(
+            x = layer_preds[layer_idx], 
+            input_seqlen = seqlen, 
+            input_feature_num = features_schedule[layer_idx], 
+            input_weights = weights['out' + str(layer_idx)], 
+            input_biases = biases['out' + str(layer_idx)],
+            output_feature_num = features_schedule[layer_idx + 1], 
+            layer_idx = layer_idx)
+
+    # elif layer_idx == layers-1:
+    #     pass
+
+    # else:
+    #     pass
+
+# pred = dynamicRNN(x, seqlen, weights, biases)
 
 # Define loss and optimizer
 # with tf.name_scope('Cost Function'):
 # cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=pred, labels=y))
+
+pred = layer_preds[-1]
+
 mse = tf.pow(pred-y, 2)
 cost = tf.reduce_mean(mse)
 # with tf.name_scope('Optimizer'):
