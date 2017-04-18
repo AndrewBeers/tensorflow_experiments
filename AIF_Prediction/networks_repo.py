@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-def dynamicRNN(x, seqlen, weights, biases):
+def dynamicRNN(x, seqlen, weights, biases, seq_max_len, multi_layer_network, features_schedule):
 
     # Prepare data shape to match `rnn` function requirements
     # Current data input shape: (batch_size, n_steps, n_input)
@@ -11,7 +11,7 @@ def dynamicRNN(x, seqlen, weights, biases):
     # with tf.name_scope(RNN_NAME):
 
         # with tf.name_scope('Unstack'):
-            print(x.get_shape())
+            # print(x.get_shape())
             x = tf.unstack(x, seq_max_len, 1)
             # print(x)
 
@@ -36,9 +36,9 @@ def dynamicRNN(x, seqlen, weights, biases):
         # with tf.name_scope('Stack and Transpose'):
             # print(outputs)
             outputs = tf.stack(outputs)
-            print(outputs.get_shape())
+            # print(outputs.get_shape())
             outputs = tf.transpose(outputs, [1, 0, 2])
-            print(outputs.get_shape())
+            # print(outputs.get_shape())
 
         # with tf.name_scope('Indexing'):
             # Hack to build the indexing and retrieve the right output.
@@ -47,18 +47,18 @@ def dynamicRNN(x, seqlen, weights, biases):
             index = tf.range(0, batch_size) * seq_max_len + (seqlen - 1)
             # Indexing
             outputs = tf.gather(tf.reshape(outputs, [-1, features_schedule[-2]]), index)
-            print(outputs.get_shape())
+            # print(outputs.get_shape())
 
         # with tf.name_scope('Return Function'):
 
         # Linear activation, using outputs computed above
 
-            print(weights.get_shape())
-            print(biases.get_shape())
+            # print(weights.get_shape())
+            # print(biases.get_shape())
 
             return_function = tf.matmul(outputs, weights) + biases
 
-            print(return_function.get_shape())                
+            # print(return_function.get_shape())                
             return return_function
 
 if __name__ == '__main__':

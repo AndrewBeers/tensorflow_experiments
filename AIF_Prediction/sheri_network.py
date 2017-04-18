@@ -1,15 +1,18 @@
-from generate_data import ToftsSequenceData
 import csv
 import random
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+
+from generate_data import ToftsSequenceData
 from networks_repo import dynamicRNN
 
-def AIF_Network(learning_rate = 0.1, training_iters = 1000000, batch_size = 50, display_step = 10, layers = 3, features_schedule = [50, 10, 100, 2], seq_max_len= 50, n_samples_train_test=[3000, 3000], output_filename = 'AIF_Network_Predictions.csv')
+def AIF_Network(learning_rate = 0.1, training_iters = 1000000, batch_size = 50, display_step = 10, layers = 3, features_schedule = [50, 10, 100, 2], seq_max_len= 50, n_samples_train_test=[3000, 3000], output_filename = 'AIF_Network_Predictions.csv', gpu=0):
 
-    trainset = ToftsSequenceData(n_samples=n_samples, max_seq_len=seq_max_len)
-    testset = ToftsSequenceData(n_samples=n_samples, max_seq_len=seq_max_len)
+    config = tf.ConfigProto(tf.GPUOptions(visible_device_list=gpu))
+
+    trainset = ToftsSequenceData(n_samples=n_samples_train_test[0], max_seq_len=seq_max_len)
+    testset = ToftsSequenceData(n_samples=n_samples_train_test[1], max_seq_len=seq_max_len)
 
     # for curve in testset.data:
         # print curve
@@ -38,7 +41,7 @@ def AIF_Network(learning_rate = 0.1, training_iters = 1000000, batch_size = 50, 
     layer_preds = [0]*(layers+1)
     layer_preds[0] = x
 
-    pred = dynamicRNN(x, seqlen, weights['out'], biases['out'])
+    pred = dynamicRNN(x, seqlen, weights['out'], biases['out'], seq_max_len, multi_layer_network, features_schedule)
 
     # Define loss and optimizer
     # with tf.name_scope('Cost Function'):
@@ -69,7 +72,7 @@ def AIF_Network(learning_rate = 0.1, training_iters = 1000000, batch_size = 50, 
     init = tf.global_variables_initializer()
 
     # Launch the graph
-    with tf.Session() as sess:
+    with tf.Session(config=config) as sess:
 
         sess.run(init)
 
@@ -107,7 +110,5 @@ def AIF_Network(learning_rate = 0.1, training_iters = 1000000, batch_size = 50, 
                 print(prediction)
                 writer.writerow(prediction)
 
-        print("Testing Accuracy:", sess.run(accuracy, feed_dict={x: test_data, y: test_label, seqlen: test_seqlen}))
-
 if __name__ == '__main__':
-    AIF_Network()
+    AIF_Network(training_iters=2000, layers=5, features_schedule=[50,100,100,50,25,2],output_filename='shortrun.csv', gpu="0")
