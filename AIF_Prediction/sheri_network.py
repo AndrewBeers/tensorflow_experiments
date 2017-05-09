@@ -8,14 +8,16 @@ import os
 from generate_data import ToftsSequenceData
 from networks_repo import dynamicRNN
 
-def AIF_Network(learning_rate = 0.1, training_iters = 1000000, batch_size = 50, display_step = 10, layers = 3, features_schedule = [50, 10, 100, 2], seq_max_len= 50, n_samples_train_test=[3000, 3000], output_filename = 'AIF_Network_Predictions.csv', gpu=0):
+def AIF_Network(learning_rate = 0.1, training_iters = 1000000, batch_size = 50, display_step = 10, layers = 3, features_schedule = [50, 10, 100, 2], seq_max_len= 50, n_samples_train_test=[300, 300], output_filename = 'AIF_Network_Predictions.csv', gpu=0):
 
     # config = tf.ConfigProto(tf.GPUOptions(visible_device_list=gpu))
-    os.environ["CUDA_VISIBLE_DEVICES"]=gpu
+    
+    # if gpu > 0:
+        # os.environ["CUDA_VISIBLE_DEVICES"]=gpu
 
     trainset = ToftsSequenceData(n_samples=n_samples_train_test[0], max_seq_len=seq_max_len)
     testset = ToftsSequenceData(n_samples=n_samples_train_test[1], max_seq_len=seq_max_len)
-
+# 
     # for curve in testset.data:
         # print curve
         # plt.plot(curve)
@@ -78,7 +80,7 @@ def AIF_Network(learning_rate = 0.1, training_iters = 1000000, batch_size = 50, 
 
         sess.run(init)
 
-        train_writer = tf.summary.FileWriter('./tensorlog', sess.graph)
+        # train_writer = tf.summary.FileWriter('./tensorlog', sess.graph)
 
         step = 1
         while step * batch_size < training_iters:
@@ -112,5 +114,26 @@ def AIF_Network(learning_rate = 0.1, training_iters = 1000000, batch_size = 50, 
                 print(prediction)
                 writer.writerow(prediction)
 
+
+    tf.reset_default_graph()
+
+def sheri_search(gpu=-1):
+
+    for layer_1 in np.arange(10,160,10):
+        for layer_2 in np.arange(10, 160,10):
+            for batch_size in [25,50,75,100]:
+                for learning_rate in [.01, .1, .5, .9]:
+                    output_path = 'shortrun_' + str(layer_1) + '_' + str(layer_2) + '_batchsize_' + str(batch_size) + '_learningrate_' + str(learning_rate) + '.csv'
+                    try:
+                        print layer_1, layer_2, batch_size, learning_rate
+                        if not os.path.exists(output_path):
+                            AIF_Network(training_iters=100000,batch_size=batch_size, learning_rate=learning_rate, layers=3, features_schedule=[50,layer_1,layer_2,2], output_filename=output_path, gpu=-1)
+                    except:
+                        tf.reset_default_graph()
+                        pass
+
+    return
+
 if __name__ == '__main__':
-    AIF_Network(training_iters=200000, batch_size=75, layers=3, features_schedule=[50,30,10,2], output_filename='shortrun.csv', gpu="1")
+    # sheri_search()
+    AIF_Network(training_iters=200000, batch_size=50, layers=3, features_schedule=[50,25,5,2], output_filename='shortrun.csv', gpu="1")
