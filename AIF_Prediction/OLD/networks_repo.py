@@ -17,7 +17,7 @@ def dynamicRNN(x, seqlen, weights, biases, seq_max_len, multi_layer_network, fea
 
         # Define a lstm cell # with tensorflow
         # with tf.name_scope('LSTM Cell'):
-            # lstm_cell = tf.contrib.rnn.BasicLSTMCell(output_feature_num)
+            lstm_cell = tf.contrib.rnn.BasicLSTMCell(output_feature_num)
 
         # Get lstm cell output, providing 'sequence_length' will perform dynamic
         # calculation.
