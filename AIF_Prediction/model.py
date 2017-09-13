@@ -2,10 +2,10 @@ import tensorflow as tf
 import numpy as np
 import csv
 
-from generate_data import ToySequenceData, ToftsSequenceData, SineSequenceData, DCESequenceData, DCEReconstructionData, ToyPatchData
+from generate_data import ToySequenceData, ToftsSequenceData, SineSequenceData, DCESequenceData, DCEReconstructionData, ToyPatchData, ToftsPatchData
 from qtim_tools.qtim_utilities.nifti_util import save_numpy_2_nifti
 
-def dynamicRNN(x, seqlen, weights, biases, max_seq_len, num_hidden = 30):
+def dynamicRNN(x, seqlen, weights, biases, max_seq_len, num_hidden_lstm = 30):
 
     # Prepare data shape to match `rnn` function requirements
     # Current data input shape: (batch_size, n_steps, n_input)
@@ -15,7 +15,7 @@ def dynamicRNN(x, seqlen, weights, biases, max_seq_len, num_hidden = 30):
     x = tf.unstack(x, max_seq_len, 1)
 
     # Define a lstm cell with tensorflow
-    lstm_cell = tf.contrib.rnn.BasicLSTMCell(num_hidden)
+    lstm_cell = tf.contrib.rnn.BasicLSTMCell(num_hidden_lstm)
 
     # Get lstm cell output, providing 'sequence_length' will perform dynamic
     # calculation.
@@ -39,12 +39,12 @@ def dynamicRNN(x, seqlen, weights, biases, max_seq_len, num_hidden = 30):
     # Start indices for each sample
     index = tf.range(0, batch_size) * max_seq_len + (seqlen - 1)
     # Indexing
-    outputs = tf.gather(tf.reshape(outputs, [-1, num_hidden]), index)
+    outputs = tf.gather(tf.reshape(outputs, [-1, num_hidden_lstm]), index)
 
     # Linear activation, using outputs computed above
     return tf.matmul(outputs, weights['out']) + biases['out']
 
-def stacked_dynamicRNN(x, seqlen, weights, biases, max_seq_len, num_hidden, num_layers, model_type):
+def stacked_dynamicRNN(x, seqlen, weights, biases, max_seq_len, num_hidden_lstm, num_layers, model_type):
 
     # Prepare data shape to match `rnn` function requirements
     # Current data input shape: (batch_size, n_steps, n_input)
@@ -66,7 +66,7 @@ def stacked_dynamicRNN(x, seqlen, weights, biases, max_seq_len, num_hidden, num_
 
     cells = []
     for _ in range(num_layers):
-        cell = cell_fn(num_hidden)
+        cell = cell_fn(num_hidden_lstm)
         cells.append(cell)
 
     cell = tf.contrib.rnn.MultiRNNCell(cells, state_is_tuple=True)
@@ -93,7 +93,7 @@ def stacked_dynamicRNN(x, seqlen, weights, biases, max_seq_len, num_hidden, num_
     # Start indices for each sample
     index = tf.range(0, batch_size) * max_seq_len + (seqlen - 1)
     # Indexing
-    outputs = tf.gather(tf.reshape(outputs, [-1, num_hidden]), index)
+    outputs = tf.gather(tf.reshape(outputs, [-1, num_hidden_lstm]), index)
 
     # Linear activation, using outputs computed above
     return tf.matmul(outputs, weights['lstm_out']) + biases['lstm_out']
@@ -105,7 +105,7 @@ def conv2d(x, W, b, strides=1):
     x = tf.nn.bias_add(x, b)
     return tf.nn.relu(x)
 
-def timeDistributed_CNN(x, seqlen, weights, biases, max_seq_len, num_hidden, num_layers, model_type):
+def timeDistributed_CNN(x, seqlen, weights, biases, max_seq_len, num_hidden_lstm, num_layers, model_type):
 
     # Input Shape - (batch_size, patch_x, patch_y, max_seq_len, n_inputs)
 
@@ -142,14 +142,15 @@ def timeDistributed_CNN(x, seqlen, weights, biases, max_seq_len, num_hidden, num
 
 class Model():
 
-    def __init__(self, max_seq_len=65, patch_x=3, patch_y=3, num_classes=2, cnn_features_out=32, num_hidden = 50, num_layers = 4, model_type = 'lstm', optimizer_type="regression", n_samples_train_test=[50000, 10000], total_epochs=300000, batch_size=400, display_epoch=10, test_batch_size=10000, load_data=False, old_model=False, train=False, test=False, reconstruct=True, dce_filepath=None, ktrans_filepath=None, ve_filepath=None, output_test_results='results.csv', output_model='model', output_ktrans_filepath='ktrans.nii.gz', output_ve_filepath='ve.nii.gz'):
+    def __init__(self, max_seq_len=65, patch_x=3, patch_y=3, num_classes=2, cnn_filters=32, cnn_features_out=32, num_hidden_lstm = 50, num_layers = 4, model_type = 'lstm', optimizer_type="regression", n_samples_train_test=[50000, 10000], total_epochs=300000, batch_size=400, display_epoch=10, test_batch_size=10000, load_data=False, old_model=False, train=False, test=False, reconstruct=True, dce_filepath=None, ktrans_filepath=None, ve_filepath=None, output_test_results='results.csv', output_model='model', output_ktrans_filepath='ktrans.nii.gz', output_ve_filepath='ve.nii.gz'):
 
         self.max_seq_len = max_seq_len
         self.patch_x = patch_x
         self.patch_y = patch_y
         self.num_classes = num_classes
+        self.cnn_filters = cnn_filters
         self.cnn_features_out = cnn_features_out
-        self.num_hidden = num_hidden
+        self.num_hidden_lstm = num_hidden_lstm
         self.num_layers = num_layers
 
         self.model_type = model_type
@@ -195,23 +196,23 @@ class Model():
         self.seqlen = tf.placeholder(tf.int32, [None])
 
         self.weights = {
-            'conv1': tf.Variable(tf.random_normal([3, 3, 1, 32])),
-            'fc1': tf.Variable(tf.random_normal([5*5*32, self.cnn_features_out])),
+            'conv1': tf.Variable(tf.random_normal([3, 3, 1, self.cnn_filters])),
+            'fc1': tf.Variable(tf.random_normal([5*5*self.cnn_filters, self.cnn_features_out])),
             'lstm': 'in_tensorflow',
-            'lstm_out': tf.Variable(tf.random_normal([self.num_hidden, self.num_classes]))
+            'lstm_out': tf.Variable(tf.random_normal([self.num_hidden_lstm, self.num_classes]))
         }
 
         self.biases = {
-            'conv1': tf.Variable(tf.random_normal([32])),
+            'conv1': tf.Variable(tf.random_normal([self.cnn_filters])),
             'fc1': tf.Variable(tf.random_normal([self.cnn_features_out])),
             'lstm': 'in_tensorflow',
             'lstm_out': tf.Variable(tf.random_normal([self.num_classes]))
         }
 
-        # self.prediction = stacked_dynamicRNN(self.data, self.seqlen, self.weights, self.biases, self.max_seq_len, self.num_hidden, self.num_layers, self.model_type)
-        # self.prediction = dynamicRNN(data, seqlen, weights, biases, max_seq_len, num_hidden)
-        self.cnn_output = timeDistributed_CNN(self.data, self.seqlen, self.weights, self.biases, self.max_seq_len, self.num_hidden, self.num_layers, self.model_type)
-        self.prediction = stacked_dynamicRNN(self.cnn_output, self.seqlen, self.weights, self.biases, self.max_seq_len, self.num_hidden, self.num_layers, self.model_type)
+        # self.prediction = stacked_dynamicRNN(self.data, self.seqlen, self.weights, self.biases, self.max_seq_len, self.num_hidden_lstm, self.num_layers, self.model_type)
+        # self.prediction = dynamicRNN(data, seqlen, weights, biases, max_seq_len, num_hidden_lstm)
+        self.cnn_output = timeDistributed_CNN(self.data, self.seqlen, self.weights, self.biases, self.max_seq_len, self.num_hidden_lstm, self.num_layers, self.model_type)
+        self.prediction = stacked_dynamicRNN(self.cnn_output, self.seqlen, self.weights, self.biases, self.max_seq_len, self.num_hidden_lstm, self.num_layers, self.model_type)
 
 
         print self.cnn_output.get_shape()
@@ -250,7 +251,10 @@ class Model():
     def load_old_data(self):
 
         # Toy Data
-        self.trainset = ToyPatchData(n_samples=self.n_samples_train_test[0])
+        # self.trainset = ToyPatchData(n_samples=self.n_samples_train_test[0])
+
+        self.trainset = ToftsPatchData(n_samples=self.n_samples_train_test[0])
+        self.testset = ToftsPatchData(n_samples=self.n_samples_train_test[1])
 
         # DCE_filepaths = ['/home/anderff/Documents/Data/RIDER_PHANTOMS/QTIM_RIDER_DCE_1023805636_19040901_PHANTOM.nii.gz', '/home/anderff/Documents/Data/RIDER_PHANTOMS/QTIM_RIDER_DCE_1023805636_19040901_ktrans.nii.gz', '/home/anderff/Documents/Data/RIDER_PHANTOMS/QTIM_RIDER_DCE_1023805636_19040901_ve.nii.gz']
 
@@ -307,7 +311,7 @@ class Model():
         # except:
             # print("Optimization Interrupted!")
 
-        self.saver.save(self.sess, 'model.meta')
+        self.saver.save(self.sess, self.output_model)
 
         return
 
@@ -325,7 +329,7 @@ class Model():
 
         preds = self.sess.run(self.prediction, feed_dict={self.data: test_data, self.target: test_label, self.seqlen: test_seqlen})
 
-        with open(self.output_filename, 'w') as csvfile:
+        with open(self.output_test_results, 'w') as csvfile:
             writer = csv.writer(csvfile, delimiter=",")
             for pred_idx, pred in enumerate(preds):
                 prediction = [round(x,3) for x in pred.tolist() + test_label[pred_idx]]
